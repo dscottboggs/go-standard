@@ -5,21 +5,21 @@ import (
 	"os"
 	"testing"
 
-	"madscientists.co/attest"
+	"github.com/dscottboggs/attest"
 )
 
 func TestBuildPath(t *testing.T) {
 	t.Run("Absolute path", func(t *testing.T) {
 		test := attest.Test{t}
-		test.AttestEquals(
+		test.Equals(
 			"/test/path/number/one",
 			BuildPath(ROOT, "test", "path", "number", "one"))
-		test.AttestEquals("/var/log/www", BuildPath(ROOT, "var", "log", "www"))
+		test.Equals("/var/log/www", BuildPath(ROOT, "var", "log", "www"))
 	})
 	t.Run("Relative path", func(t *testing.T) {
 		test := attest.Test{t}
-		test.AttestEquals("test/path/two", BuildPath("test", "path", "two"))
-		test.AttestEquals(
+		test.Equals("test/path/two", BuildPath("test", "path", "two"))
+		test.Equals(
 			".config/i3/config",
 			BuildPath(".config", "i3", "config"))
 	})
@@ -38,11 +38,11 @@ func TestReadFileAsync(t *testing.T) {
 	ch := make(chan string)
 	// Test actually starts here
 	go ReadFileAsync(ch, ROOT, "tmp", "fileOps_test.go.tmp.txt")
-	test.AttestEquals(tFileContents, <-ch)
+	test.Equals(tFileContents, <-ch)
 	// teardown -- delete the temp file
 	test.Handle(os.Remove("/tmp/fileOps_test.go.tmp.txt"))
 	go ReadFileAsync(ch, ROOT, "invalid", "path", "causes", "error")
-	test.AttestEquals(
+	test.Equals(
 		"Error reading file '/invalid/path/causes/error'.", <-ch)
 	// Output: Error reading file '/invalid/path/causes/error'.
 }
