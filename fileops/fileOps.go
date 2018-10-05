@@ -34,7 +34,7 @@ func ReadFileAsync(filepath ...string) (chan []byte, error) {
 
 // WriteFileAsync -- Write data received on the given channel to the given file
 // until the channel is closed
-func WriteFileAsync(contents chan []byte, permissions os.FileMode, filepath ...string) chan error {
+func WriteFileAsync(contents chan []byte, filepath ...string) chan error {
 	var (
 		buf   []byte
 		ok    bool
@@ -49,8 +49,7 @@ func WriteFileAsync(contents chan []byte, permissions os.FileMode, filepath ...s
 		}
 		for {
 			if buf, ok = <-contents; ok {
-				_, err := file.Write(buf)
-				if err != nil {
+				if _, err := file.Write(buf); err != nil {
 					errch <- err
 					return
 				}
