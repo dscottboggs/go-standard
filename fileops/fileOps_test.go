@@ -17,6 +17,8 @@ const (
 	testReadFilePath       = "/tmp/fileOps_read_test.txt"
 	testWriteFilePath      = "/tmp/fileOps_write_test.txt"
 	testPermissionFilePath = "/tmp/fileOps_perm_test.txt"
+	testCopyFromPath       = "/tmp/fileOps_copy_from_test.txt"
+	testCopyToPath         = "/tmp/fileOps_copy_to_test.txt"
 	readOnlyPermissions    = 0444
 )
 
@@ -26,16 +28,19 @@ func TestMain(m *testing.M) {
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(err)
 	}
+	err = ioutil.WriteFile(testCopyFromPath, []byte(tFileContents), 0644)
+	if err != nil && !os.IsExist(err) {
+		log.Fatal(err)
+	}
 	// run tests
 	exitCode := m.Run()
 	// teardown
-	err = os.RemoveAll(path.Join(os.TempDir(), testReadFilePath))
-	if err != nil && !os.IsExist(err) && !os.IsNotExist(err) {
-		log.Fatal(err)
-	}
-	err = os.RemoveAll(path.Join(os.TempDir(), testWriteFilePath))
-	if err != nil && !os.IsExist(err) && !os.IsNotExist(err) {
-		log.Fatal(err)
+	files := [4]string{testReadFilePath, testWriteFilePath, testCopyToPath, testCopyFromPath}
+	for _, file := range files {
+		err = os.RemoveAll(path.Join(os.TempDir(), file))
+		if err != nil && !os.IsExist(err) && !os.IsNotExist(err) {
+			log.Fatal(err)
+		}
 	}
 	os.Exit(exitCode)
 }
@@ -43,13 +48,18 @@ func TestMain(m *testing.M) {
 func TestReadFileAsync(t *testing.T) {
 	t.Run("successfully read from a real file", func(t *testing.T) {
 		test := attest.New(t)
-		ch, err := ReadFileAsync(ROOT, "tmp", "fileOps_test.go.tmp.txt")
-		test.Handle(err)
+		ch, err := Read(testReadFilePath)
+		time.Sleep(1 * time.Second)
+		select {
+		case e := <-err:
+			test.Handle(e)
+		default:
+		}
 		test.Equals(tFileContents, strings.Trim(string(<-ch), "\x00"))
 	})
 	t.Run("throws an error when the file doesn't exist", func(t *testing.T) {
 		test := attest.New(t)
-		ch, err := ReadFileAsync(ROOT, "invalid", "path", "causes", "error")
+		ch, err := Read(ROOT, "invalid", "path", "causes", "error")
 		if err == nil {
 			test.NotNil(err, "got nil error from ReadFileAsync on invalid path.")
 			time.Sleep(1 * time.Second)
@@ -66,8 +76,7 @@ func TestReadFileAsync(t *testing.T) {
 func TestWrite(t *testing.T) {
 	t.Run("successfully writes to a real file", func(t *testing.T) {
 		test := attest.New(t)
-		dataChan := make(chan []byte)
-		errorChan := WriteFileAsync(dataChan, testWriteFilePath)
+		dataChan, errorChan := Write(testWriteFilePath)
 		time.Sleep(1 * time.Second)
 		select {
 		case err := <-errorChan:
@@ -85,7 +94,6 @@ func TestWrite(t *testing.T) {
 	})
 	t.Run("sends an error when permission denied", func(t *testing.T) {
 		test := attest.New(t)
-		dataChan := make(chan []byte)
 		if f, err := os.Create(testPermissionFilePath); err != nil {
 			if !os.IsPermission(err) {
 				t.Fatalf(
@@ -98,7 +106,7 @@ func TestWrite(t *testing.T) {
 			test.Handle(os.Chmod(testPermissionFilePath, readOnlyPermissions))
 			f.Close()
 		}
-		errorChan := WriteFileAsync(dataChan, testPermissionFilePath)
+		dataChan, errorChan := Write(testPermissionFilePath)
 		time.Sleep(1 * time.Second) // to remove necesity for blocking `select`
 		select {
 		case err := <-errorChan:
@@ -118,5 +126,39 @@ func TestWrite(t *testing.T) {
 					"permission error",
 			)
 		}
+		select {
+		case dataChan <- []byte(tFileContents):
+			test.Error("Was able to write to data channel after error.")
+		default:
+		}
 	})
+}
+
+func TestCopy(t *testing.T) {
+	var (
+		// overwrite      = true
+		doNotOverwrite = false
+	)
+	t.Run("calmly handles receiving the same file twice", func(t *testing.T) {
+		test := attest.New(t)
+		test.Handle(Copy(testCopyFromPath, testCopyFromPath, doNotOverwrite))
+	})
+	t.Run("creates a hard link", func(t *testing.T) {
+		test := attest.New(t)
+		test.Handle(Copy(testCopyFromPath, testCopyToPath, doNotOverwrite))
+	})
+	t.Run("returns an error when asked to copy the same file twice", func(t *testing.T) {
+		test := attest.New(t)
+		err := Copy(testCopyFromPath, testCopyToPath, doNotOverwrite)
+		if !os.IsExist(err) {
+			test.Error(
+				"Got error %#+v instead of expected file exists error",
+				err,
+			)
+		}
+	})
+	// t.Run("overwrites a file when asked to", func(t *testing.T) {
+	// 	test := attest.NewTest(t)
+	// 	test.Handle(Copy(testCopyFromPath, testCopyToPath, overwrite))
+	// })
 }
